@@ -1,0 +1,64 @@
+# Default values for nexuscore-identity-service.
+# This is a YAML-formatted file.
+
+replicaCount: 3
+
+image:
+  repository: gcr.io/nexuscore-platform/identity-service
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: "v1.0.0"
+
+service:
+  type: ClusterIP
+  httpPort: 8081
+  grpcPort: 50051
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  hosts:
+    - host: auth.nexuscore.io
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 75
+
+env:
+  httpPort: "8081"
+  grpcPort: "50051"
+  redisHost: "redis-cluster.cache.svc:6379"
+  kafkaBrokers: "kafka-bootstrap.platform.svc:9092"
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values:
+                  - nexuscore-identity-service
+          topologyKey: "kubernetes.io/hostname"

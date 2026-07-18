@@ -1,0 +1,152 @@
+version: '3.8'
+
+services:
+  # -------------------------------------------------------------
+  # PERSISTENT STORAGE & CORE DATA LAYER
+  # -------------------------------------------------------------
+  postgres:
+    image: postgres:15-alpine
+    container_name: nexuscore-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: enterprise_password_99
+      POSTGRES_DB: nexuscore_enterprise
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: nexuscore-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --requirepass redis_secure_pass_77
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "redis_secure_pass_77", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # -------------------------------------------------------------
+  # KAFKA MESSAGE BROKER & EVENT BUS
+  # -------------------------------------------------------------
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: nexuscore-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: nexuscore-kafka
+    ports:
+      - "9092:9092"
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server kafka:29092 --list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # -------------------------------------------------------------
+  # DISTRIBUTED OBSERVABILITY LAYER
+  # -------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: nexuscore-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
+    depends_on:
+      - api-gateway
+      - auth-service
+      - compute-engine
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: nexuscore-jaeger
+    ports:
+      - "16686:16686"  # Query UI
+      - "4317:4317"    # OTLP gRPC receiver
+      - "4318:4318"    # OTLP HTTP receiver
+
+  # -------------------------------------------------------------
+  # NEXUSCORE GO MICROSERVICES
+  # -------------------------------------------------------------
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    container_name: nexuscore-api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - AUTH_SERVICE_URL=http://auth-service:8081
+      - COMPUTE_SERVICE_URL=http://compute-engine:8082
+      - JAEGER_URL=http://jaeger:4317
+      - ENVIRONMENT=production
+    depends_on:
+      - auth-service
+      - compute-engine
+
+  auth-service:
+    build:
+      context: ./auth-service
+      dockerfile: Dockerfile
+    container_name: nexuscore-auth-service
+    ports:
+      - "8081:8081"
+    environment:
+      - PORT=8081
+      - DB_DSN=postgres://postgres:enterprise_password_99@postgres:5432/nexuscore_enterprise?sslmode=disable
+      - REDIS_ADDR=redis:6379
+      - REDIS_PASS=redis_secure_pass_77
+      - JWT_SECRET=super_cryptographic_secret_hash_key_111
+      - JAEGER_URL=http://jaeger:4317
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  compute-engine:
+    build:
+      context: ./compute-engine
+      dockerfile: Dockerfile
+    container_name: nexuscore-compute-engine
+    ports:
+      - "8082:8082"
+    environment:
+      - PORT=8082
+      - DB_DSN=postgres://postgres:enterprise_password_99@postgres:5432/nexuscore_enterprise?sslmode=disable
+      - KAFKA_BROKERS=kafka:29092
+      - JAEGER_URL=http://jaeger:4317
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  redisdata:

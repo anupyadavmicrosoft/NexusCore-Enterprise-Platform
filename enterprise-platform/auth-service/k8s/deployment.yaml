@@ -1,0 +1,118 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nexuscore-identity-service
+  namespace: platform
+  labels:
+    app: nexuscore-identity-service
+    tier: control-plane
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: nexuscore-identity-service
+  template:
+    metadata:
+      labels:
+        app: nexuscore-identity-service
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        fsGroup: 65532
+      containers:
+        - name: identity-service
+          image: gcr.io/nexuscore-platform/identity-service:v1.0.0
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          ports:
+            - containerPort: 8081
+              name: http-api
+            - containerPort: 50051
+              name: grpc-api
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+          env:
+            - name: HTTP_PORT
+              value: "8081"
+            - name: GRPC_PORT
+              value: "50051"
+            - name: REDIS_HOST
+              value: "redis-cluster.cache.svc:6379"
+            - name: KAFKA_BROKERS
+              value: "kafka-bootstrap.platform.svc:9092"
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: identity-secrets
+                  key: jwt-signing-key
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nexuscore-identity-service
+  namespace: platform
+spec:
+  type: ClusterIP
+  selector:
+    app: nexuscore-identity-service
+  ports:
+    - name: http
+      port: 8081
+      targetPort: 8081
+    - name: grpc
+      port: 50051
+      targetPort: 50051
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: nexuscore-identity-service-hpa
+  namespace: platform
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: nexuscore-identity-service
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 75
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: nexuscore-identity-pdb
+  namespace: platform
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: nexuscore-identity-service

@@ -1,0 +1,8 @@
+{
+  "name": "NexusCore Platform Workbench",
+  "description": "Enterprise-grade distributed platform architect workbench with live Golang code generators, Kubernetes topology maps, real-time telemetry simulators, interactive OpenAPI playgrounds, and a cognitive AI Platform featuring multi-model routing gateways, vector databases, and RAG pipelines.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

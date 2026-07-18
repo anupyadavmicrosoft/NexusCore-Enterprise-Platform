@@ -1,0 +1,38 @@
+# Go Binaries and compiled objects
+bin/
+*.exe
+*.exe_
+*.dll
+*.so
+*.dylib
+*.out
+
+# Go test and coverage assets
+*.test
+c.out
+coverage.txt
+profile.out
+
+# IDE and Project workspace configs
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Environment configurations containing secrets
+.env
+.env.local
+.env.production
+.env.development
+
+# Docker Compose volumes and state folders
+.data/
+pgdata/
+redisdata/
+
+# OS specific temporary files
+.DS_Store
+Thumbs.db
