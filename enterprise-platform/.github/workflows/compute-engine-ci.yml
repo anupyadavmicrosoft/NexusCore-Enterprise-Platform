@@ -1,0 +1,45 @@
+name: NexusCore Compute Engine CI
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'enterprise-platform/compute-engine/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'enterprise-platform/compute-engine/**'
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository source
+      uses: actions/checkout@v4
+
+    - name: Set up Go runtime environment
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.22'
+        cache-dependency-path: 'enterprise-platform/compute-engine/go.sum'
+
+    - name: Download Go dependencies
+      run: |
+        cd enterprise-platform/compute-engine
+        go mod download
+
+    - name: Run Go Code Linter
+      uses: golangci/golangci-lint-action@v6
+      with:
+        version: v1.59
+        working-directory: enterprise-platform/compute-engine
+
+    - name: Run Compute Engine Unit and Integration Tests
+      run: |
+        cd enterprise-platform/compute-engine
+        go test -v -race -coverprofile=coverage.out ./...
+
+    - name: Build Secure Container Image
+      run: |
+        cd enterprise-platform/compute-engine
+        docker build -t gcr.io/nexuscore-prod/compute-engine:${{ github.sha }} .

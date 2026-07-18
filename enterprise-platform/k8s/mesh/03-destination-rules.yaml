@@ -1,0 +1,122 @@
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: api-gateway-dr
+  namespace: nexuscore-prod
+spec:
+  host: api-gateway.nexuscore-prod.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL # Strict mutual TLS with certificates managed by Istiod
+    connectionPool:
+      tcp:
+        maxConnections: 2048 # Max TCP connections before queueing
+      http:
+        http1MaxPendingRequests: 512
+        maxRequestsPerConnection: 32
+    outlierDetection:
+      consecutive5xxErrors: 3 # Circuit breaker trips if 3 consecutive HTTP 5xx errors occur
+      interval: 10s # Check every 10 seconds
+      baseEjectionTime: 30s # Eject faulty pod for 30s
+      maxEjectionPercent: 100 # Can eject all faulty pods if needed
+  subsets:
+  - name: stable
+    labels:
+      version: stable
+  - name: canary
+    labels:
+      version: canary
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: auth-service-dr
+  namespace: nexuscore-prod
+spec:
+  host: auth-service.nexuscore-prod.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+    connectionPool:
+      tcp:
+        maxConnections: 1024
+      http:
+        http1MaxPendingRequests: 256
+        maxRequestsPerConnection: 16
+    outlierDetection:
+      consecutive5xxErrors: 3
+      interval: 10s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 100
+  subsets:
+  - name: stable
+    labels:
+      version: stable
+  - name: canary
+    labels:
+      version: canary
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: compute-engine-dr
+  namespace: nexuscore-prod
+spec:
+  host: compute-engine.nexuscore-prod.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+    connectionPool:
+      tcp:
+        maxConnections: 4096
+      http:
+        http1MaxPendingRequests: 1024
+        maxRequestsPerConnection: 64
+    outlierDetection:
+      consecutive5xxErrors: 3
+      interval: 5s
+      baseEjectionTime: 15s
+      maxEjectionPercent: 100
+  subsets:
+  - name: stable
+    labels:
+      version: stable
+  - name: canary
+    labels:
+      version: canary
+---
+# DestinationRule for Egress Gateway - mTLS from App to Gateway
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: egressgateway-dr
+  namespace: nexuscore-prod
+spec:
+  host: istio-egressgateway.istio-system.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+---
+# DestinationRule for Stripe API - Egress Gateway to Stripe external site
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: stripe-external-dr
+  namespace: nexuscore-prod
+spec:
+  host: api.stripe.com
+  trafficPolicy:
+    tls:
+      mode: SIMPLE # Originate TLS connection to external HTTPS endpoint
+---
+# DestinationRule for GitHub API - Egress Gateway to GitHub external site
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: github-external-dr
+  namespace: nexuscore-prod
+spec:
+  host: api.github.com
+  trafficPolicy:
+    tls:
+      mode: SIMPLE # Originate TLS connection to external HTTPS endpoint

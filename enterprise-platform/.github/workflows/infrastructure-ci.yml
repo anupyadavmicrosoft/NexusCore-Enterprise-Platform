@@ -1,0 +1,86 @@
+name: NexusCore Infrastructure CI
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'enterprise-platform/terraform/**'
+      - 'enterprise-platform/k8s/**'
+      - 'enterprise-platform/charts/**'
+      - 'enterprise-platform/**/Dockerfile'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'enterprise-platform/terraform/**'
+      - 'enterprise-platform/k8s/**'
+      - 'enterprise-platform/charts/**'
+      - 'enterprise-platform/**/Dockerfile'
+
+jobs:
+  validate-terraform:
+    name: Validate Terraform Configuration
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository source
+      uses: actions/checkout@v4
+
+    - name: Set up HashiCorp Terraform CLI
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: "1.7.0"
+
+    - name: Terraform Format Check
+      run: |
+        cd enterprise-platform/terraform/environments/production
+        terraform fmt -check -recursive ../../
+
+    - name: Terraform Initialize and Validate
+      run: |
+        cd enterprise-platform/terraform/environments/production
+        terraform init -backend=false
+        terraform validate
+
+  validate-kubernetes-and-helm:
+    name: Validate Kubernetes Manifests & Helm Charts
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository source
+      uses: actions/checkout@v4
+
+    - name: Set up Helm
+      uses: azure/setup-helm@v4
+      with:
+        version: v3.14.0
+
+    - name: Helm Chart Linting
+      run: |
+        cd enterprise-platform/charts/nexuscore-service
+        helm lint .
+
+    - name: Helm Template Validation
+      run: |
+        cd enterprise-platform/charts/nexuscore-service
+        helm template . --debug
+
+    - name: Set up Kubeconform (K8s Manifest Validator)
+      run: |
+        wget https://github.com/yannh/kubeconform/releases/download/v0.6.4/kubeconform-linux-amd64.tar.gz
+        tar -xf kubeconform-linux-amd64.tar.gz
+        sudo mv kubeconform /usr/local/bin/
+
+    - name: Validate Kubernetes Manifests
+      run: |
+        kubeconform -summary -ignore-filename-pattern "monitoring|mesh" enterprise-platform/k8s/production/
+
+  validate-dockerfiles:
+    name: Lint Dockerfiles
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository source
+      uses: actions/checkout@v4
+
+    - name: Run Hadolint on Dockerfiles
+      uses: hadolint/hadolint-action@v3.1.0
+      with:
+        recursive: true
+        ignore: 'DL3018' # Alpine package version pinning warning bypass for base images

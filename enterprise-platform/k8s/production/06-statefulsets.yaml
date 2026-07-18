@@ -1,0 +1,235 @@
+# ---------------------------------------------------------------------------
+# ZOOKEEPER STATEFULSET (For Kafka Coordination)
+# ---------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: zookeeper
+  namespace: nexuscore-data
+  labels:
+    app: zookeeper
+spec:
+  serviceName: zookeeper-headless
+  replicas: 3
+  selector:
+    matchLabels:
+      app: zookeeper
+  template:
+    metadata:
+      labels:
+        app: zookeeper
+    spec:
+      priorityClassName: nexuscore-critical
+      containers:
+      - name: zookeeper
+        image: confluentinc/cp-zookeeper:7.4.0
+        ports:
+        - containerPort: 2181
+          name: client
+        - containerPort: 2888
+          name: server
+        - containerPort: 3888
+          name: leader-election
+        env:
+        - name: ZOOKEEPER_CLIENT_PORT
+          value: "2181"
+        - name: ZOOKEEPER_TICK_TIME
+          value: "2000"
+        - name: ZOOKEEPER_SERVERS
+          value: "zookeeper-0.zookeeper-headless.nexuscore-data.svc.cluster.local:2888:3888;zookeeper-1.zookeeper-headless.nexuscore-data.svc.cluster.local:2888:3888;zookeeper-2.zookeeper-headless.nexuscore-data.svc.cluster.local:2888:3888"
+        resources:
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+          requests:
+            cpu: "250m"
+            memory: "256Mi"
+        volumeMounts:
+        - name: zookeeper-data
+          mountPath: /var/lib/zookeeper/data
+        - name: zookeeper-log
+          mountPath: /var/lib/zookeeper/log
+  volumeClaimTemplates:
+  - metadata:
+      name: zookeeper-data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: nexuscore-premium-rwo
+      resources:
+        requests:
+          storage: 10Gi
+  - metadata:
+      name: zookeeper-log
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: nexuscore-premium-rwo
+      resources:
+        requests:
+          storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: zookeeper-headless
+  namespace: nexuscore-data
+spec:
+  clusterIP: None
+  ports:
+  - port: 2181
+    name: client
+  selector:
+    app: zookeeper
+---
+# ---------------------------------------------------------------------------
+# KAFKA BROKER STATEFULSET
+# ---------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kafka
+  namespace: nexuscore-data
+  labels:
+    app: kafka
+spec:
+  serviceName: kafka-headless
+  replicas: 3
+  selector:
+    matchLabels:
+      app: kafka
+  template:
+    metadata:
+      labels:
+        app: kafka
+    spec:
+      priorityClassName: nexuscore-critical
+      containers:
+      - name: kafka
+        image: confluentinc/cp-kafka:7.4.0
+        ports:
+        - containerPort: 9092
+          name: broker
+        env:
+        - name: KAFKA_ZOOKEEPER_CONNECT
+          value: "zookeeper-headless.nexuscore-data.svc.cluster.local:2181"
+        - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+          value: "PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT"
+        - name: KAFKA_ADVERTISED_LISTENERS
+          value: "PLAINTEXT_INTERNAL://kafka-headless.nexuscore-data.svc.cluster.local:9092"
+        - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
+          value: "3"
+        - name: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR
+          value: "3"
+        - name: KAFKA_TRANSACTION_STATE_LOG_MIN_ISR
+          value: "2"
+        resources:
+          limits:
+            cpu: "2.0"
+            memory: "4Gi"
+          requests:
+            cpu: "1.0"
+            memory: "2Gi"
+        volumeMounts:
+        - name: kafka-logs
+          mountPath: /var/lib/kafka/data
+  volumeClaimTemplates:
+  - metadata:
+      name: kafka-logs
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: nexuscore-premium-rwo
+      resources:
+        requests:
+          storage: 100Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-headless
+  namespace: nexuscore-data
+spec:
+  clusterIP: None
+  ports:
+  - port: 9092
+    name: broker
+  selector:
+    app: kafka
+---
+# ---------------------------------------------------------------------------
+# POSTGRESQL STATEFULSET
+# ---------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: nexuscore-data
+  labels:
+    app: postgres
+spec:
+  serviceName: postgres-headless
+  replicas: 3
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      priorityClassName: nexuscore-critical
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        ports:
+        - containerPort: 5432
+          name: dbport
+        env:
+        - name: POSTGRES_DB
+          value: nexuscore_enterprise
+        - name: POSTGRES_USER
+          value: postgres
+        - name: POSTGRES_PASSWORD
+          value: "enterprise_prod_db_sec_pass_88"
+        resources:
+          limits:
+            cpu: "2.0"
+            memory: "4Gi"
+          requests:
+            cpu: "1.0"
+            memory: "2Gi"
+        volumeMounts:
+        - name: postgres-db-vol
+          mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+  - metadata:
+      name: postgres-db-vol
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: nexuscore-premium-rwo
+      resources:
+        requests:
+          storage: 100Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-headless
+  namespace: nexuscore-data
+spec:
+  clusterIP: None
+  ports:
+  - port: 5432
+    name: dbport
+  selector:
+    app: postgres
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-primary
+  namespace: nexuscore-data
+spec:
+  ports:
+  - port: 5432
+    targetPort: dbport
+  selector:
+    app: postgres

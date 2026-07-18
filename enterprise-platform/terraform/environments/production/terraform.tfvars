@@ -1,0 +1,6 @@
+project_id         = "nexuscore-enterprise-prod-123456"
+region             = "us-central1"
+domain_name        = "nexuscore-enterprise.com"
+subdomain          = "api.nexuscore-enterprise.com"
+notification_email = "ops@nexuscore-enterprise.com"
+db_password        = "placeholder_enterprise_db_pass_99_do_not_use_in_real_prod"

@@ -1,0 +1,62 @@
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: api-gateway-allow-ingress
+  namespace: nexuscore-prod
+spec:
+  selector:
+    matchLabels:
+      app: api-gateway
+  action: ALLOW
+  rules:
+  - from:
+    - source:
+        principals: ["cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account"]
+      # Restrict ingress to API standard ports
+      ports: ["8080"]
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: auth-service-allow-gateway
+  namespace: nexuscore-prod
+spec:
+  selector:
+    matchLabels:
+      app: auth-service
+  action: ALLOW
+  rules:
+  - from:
+    - source:
+        # Only accept traffic matching the api-gateway's security principal
+        principals: ["cluster.local/ns/nexuscore-prod/sa/api-gateway"]
+      ports: ["8081"]
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: compute-engine-allow-gateway
+  namespace: nexuscore-prod
+spec:
+  selector:
+    matchLabels:
+      app: compute-engine
+  action: ALLOW
+  rules:
+  - from:
+    - source:
+        # Only accept traffic matching the api-gateway's security principal
+        principals: ["cluster.local/ns/nexuscore-prod/sa/api-gateway"]
+      ports: ["8082"]
+---
+# Deny-all fallback policy for anything not matched within the prod namespace
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: global-deny-all
+  namespace: nexuscore-prod
+spec:
+  action: DENY
+  # Empty spec rule denies all traffic unless whitelisted above
+  rules:
+  - {}

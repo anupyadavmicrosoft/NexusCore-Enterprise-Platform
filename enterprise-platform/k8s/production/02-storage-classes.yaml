@@ -1,0 +1,10 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: nexuscore-premium-rwo
+provisioner: pd.csi.storage.gke.io # Standard GKE Persistent Disk CSI driver
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+parameters:
+  type: pd-ssd # SSD disks for database write performance
+  replication-type: none

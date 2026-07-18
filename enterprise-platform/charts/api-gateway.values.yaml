@@ -1,0 +1,119 @@
+# Helm values for NexusCore Ingress API Gateway Service
+replicaCount: 3
+
+nameOverride: "api-gateway"
+appLabel: "api-gateway"
+
+priorityClassName: "nexuscore-high"
+
+image:
+  repository: gcr.io/nexuscore-prod/api-gateway
+  tag: v1.0.0
+  pullPolicy: IfNotPresent
+
+service:
+  port: 8080
+  targetPort: 8080
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-production"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    nginx.ingress.kubernetes.io/limit-rps: "100"
+    nginx.ingress.kubernetes.io/limit-connections: "20"
+  hosts:
+    - host: api.nexuscore-enterprise.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: nexuscore-tls-prod-cert
+      hosts:
+        - api.nexuscore-enterprise.com
+
+config:
+  ENVIRONMENT: "production"
+  PORT: "8080"
+  AUTH_SERVICE_URL: "http://auth-service.nexuscore-prod.svc.cluster.local:8081"
+  COMPUTE_SERVICE_URL: "http://compute-engine.nexuscore-prod.svc.cluster.local:8082"
+  JAEGER_URL: "http://jaeger-collector.nexuscore-system.svc.cluster.local:4317"
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 250m
+    memory: 256Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+containerPorts:
+  - name: http
+    containerPort: 8080
+    protocol: TCP
+
+livenessProbe:
+  httpGet:
+    path: /api/v1/health
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /api/v1/health
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 5
+
+networkPolicy:
+  enabled: true
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: nexuscore-ingress
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: auth-service
+      ports:
+        - protocol: TCP
+          port: 8081
+    - to:
+        - podSelector:
+            matchLabels:
+              app: compute-engine
+      ports:
+        - protocol: TCP
+          port: 8082
+
+monitoring:
+  serviceMonitor:
+    enabled: true
+    interval: 15s
+    path: /metrics
+    port: http
+  prometheusRule:
+    enabled: true
+    rules:
+      - alert: APIGatewayHighLatency
+        expr: histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le)) > 1.5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API Gateway p99 latency exceeded 1.5s on cluster"

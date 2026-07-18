@@ -1,0 +1,13 @@
+{{- if and .Values.monitoring.prometheusRule.enabled .Values.monitoring.prometheusRule.rules -}}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "nexuscore-service.fullname" . }}
+  labels:
+    {{- include "nexuscore-service.labels" . | nindent 4 }}
+spec:
+  groups:
+    - name: {{ include "nexuscore-service.fullname" . }}.rules
+      rules:
+        {{- toYaml .Values.monitoring.prometheusRule.rules | nindent 8 }}
+{{- end }}

@@ -1,0 +1,54 @@
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: gateway-local-rate-limit
+  namespace: nexuscore-prod
+spec:
+  workloadSelector:
+    labels:
+      istio: ingressgateway # Apply filter on edge ingress gateways only
+  configPatches:
+  - applyTo: HTTP_FILTER
+    match:
+      context: GATEWAY
+      listener:
+        filterChain:
+          filter:
+            name: "envoy.filters.network.http_connection_manager"
+            subFilter:
+              name: "envoy.filters.http.router"
+    patch:
+      operation: INSERT_BEFORE
+      value:
+        name: envoy.filters.http.local_ratelimit
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
+          stat_prefix: local_rate_limiter
+          # Define bucket sizes
+          token_bucket:
+            max_tokens: 200 # Max burst token allowance
+            tokens_per_fill: 100 # Refill 100 tokens per interval
+            fill_interval: 1s
+          # Enable rate-limit checking for 100% of requests
+          filter_enabled:
+            runtime_key: local_rate_limit_enabled
+            default_value:
+              numerator: 100
+              denominator: HUNDRED
+          # Enforce HTTP 429 block for 100% of exceeding requests
+          filter_enforced:
+            runtime_key: local_rate_limit_enforced
+            default_value:
+              numerator: 100
+              denominator: HUNDRED
+          # Append rate limit information to response headers
+          response_headers_to_add:
+          - header:
+              key: "x-local-rate-limit-limit"
+              value: "100"
+          - header:
+              key: "x-local-rate-limit-burst"
+              value: "200"
+          - header:
+              key: "retry-after"
+              value: "1"

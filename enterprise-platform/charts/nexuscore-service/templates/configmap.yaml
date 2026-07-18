@@ -1,0 +1,12 @@
+{{- if .Values.config -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "nexuscore-service.fullname" . }}-config
+  labels:
+    {{- include "nexuscore-service.labels" . | nindent 4 }}
+data:
+  {{- range $key, $val := .Values.config }}
+  {{ $key }}: {{ $val | quote }}
+  {{- end }}
+{{- end }}

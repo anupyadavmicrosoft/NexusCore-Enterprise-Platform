@@ -1,0 +1,6 @@
+apiVersion: v2
+name: nexuscore-service
+description: A highly configurable, enterprise-grade reusable Helm chart for NexusCore microservices.
+type: application
+version: 1.0.0
+appVersion: "1.0.0"

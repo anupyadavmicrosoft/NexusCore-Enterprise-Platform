@@ -1,0 +1,75 @@
+apiVersion: networking.istio.io/v1alpha3
+kind: Gateway
+metadata:
+  name: nexuscore-ingress-gateway
+  namespace: nexuscore-prod
+spec:
+  selector:
+    istio: ingressgateway # Binds to standard istio-ingressgateway deployment
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - "api.nexuscore-enterprise.com"
+    tls:
+      httpsRedirect: true # Enforce HTTP to HTTPS upgrade
+  - port:
+      number: 443
+      name: https
+      protocol: HTTPS
+    hosts:
+    - "api.nexuscore-enterprise.com"
+    tls:
+      mode: SIMPLE
+      credentialName: nexuscore-tls-prod-cert # Created by cert-manager
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: Gateway
+metadata:
+  name: nexuscore-egress-gateway
+  namespace: nexuscore-prod
+spec:
+  selector:
+    istio: egressgateway # Binds to standard istio-egressgateway deployment
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - "api.stripe.com"
+    - "api.github.com"
+---
+# ServiceEntry to declare Stripe API in Istio's internal registry
+apiVersion: networking.istio.io/v1alpha3
+kind: ServiceEntry
+metadata:
+  name: stripe-api-service-entry
+  namespace: nexuscore-prod
+spec:
+  hosts:
+  - "api.stripe.com"
+  ports:
+  - number: 443
+    name: https
+    protocol: HTTPS
+  resolution: DNS
+  location: MESH_EXTERNAL
+---
+# ServiceEntry to declare GitHub API in Istio's internal registry
+apiVersion: networking.istio.io/v1alpha3
+kind: ServiceEntry
+metadata:
+  name: github-api-service-entry
+  namespace: nexuscore-prod
+spec:
+  hosts:
+  - "api.github.com"
+  ports:
+  - number: 443
+    name: https
+    protocol: HTTPS
+  resolution: DNS
+  location: MESH_EXTERNAL

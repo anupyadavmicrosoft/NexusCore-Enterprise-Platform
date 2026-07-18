@@ -1,0 +1,178 @@
+# Default values for nexuscore-service.
+# This is a generic, reusable chart.
+
+replicaCount: 3
+
+image:
+  repository: gcr.io/nexuscore-prod/api-gateway
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+appLabel: ""
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+    - ALL
+
+service:
+  type: ClusterIP
+  port: 8080
+  targetPort: 8080
+
+ingress:
+  enabled: false
+  className: "nginx"
+  annotations: {}
+    # cert-manager.io/cluster-issuer: "letsencrypt-production"
+    # nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  hosts: []
+    # - host: api.nexuscore-enterprise.com
+    #   paths:
+    #     - path: /
+    #       pathType: Prefix
+  tls: []
+    # - secretName: nexuscore-tls-prod-cert
+    #   hosts:
+    #     - api.nexuscore-enterprise.com
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 250m
+    memory: 256Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+priorityClassName: "nexuscore-normal"
+
+# Application ConfigMap and Secrets
+config: {}
+  # ENVIRONMENT: "production"
+  # AUTH_SERVICE_URL: "http://auth-service.nexuscore-prod:8081"
+
+secrets: {}
+  # DB_DSN: "postgres://..."
+
+# Reference existing Secrets or ConfigMaps
+envFrom: []
+# - configMapRef:
+#     name: some-config
+# - secretRef:
+#     name: some-secret
+
+# Directly configure extra environment variables
+env: []
+# - name: EXTRA_VAR
+#   value: "extra-value"
+# - name: DB_PASSWORD
+#   valueFrom:
+#     secretKeyRef:
+#       name: db-secrets
+#       key: password
+
+# Ports to expose on the container
+containerPorts:
+  - name: http
+    containerPort: 8080
+    protocol: TCP
+
+# Health probes
+livenessProbe:
+  httpGet:
+    path: /api/v1/health
+    port: http
+  initialDelaySeconds: 15
+  periodSeconds: 10
+readinessProbe:
+  httpGet:
+    path: /api/v1/health
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 5
+
+# Volume and Mounts config
+volumes:
+  - name: tmp-volume
+    emptyDir: {}
+volumeMounts:
+  - name: tmp-volume
+    mountPath: /tmp
+
+# Network Policy definition
+networkPolicy:
+  enabled: true
+  # Ingress rules allowed into this service
+  ingress: []
+    # - from:
+    #     - podSelector:
+    #         matchLabels:
+    #           app: api-gateway
+    #   ports:
+    #     - protocol: TCP
+    #       port: 8081
+  # Egress rules allowed out of this service
+  egress: []
+    # - to:
+    #     - namespaceSelector:
+    #         matchLabels:
+    #           name: nexuscore-data
+    #   ports:
+    #     - protocol: TCP
+    #       port: 5432
+
+# Monitoring configuration via Prometheus Operator
+monitoring:
+  serviceMonitor:
+    enabled: true
+    interval: 15s
+    path: /metrics
+    port: http
+    labels:
+      release: prometheus
+  prometheusRule:
+    enabled: true
+    rules: []
+      # - alert: ServiceHighErrorRate
+      #   expr: sum(rate(http_requests_total{status=~"5.*"}[5m])) / sum(rate(http_requests_total[5m])) * 100 > 5
+      #   for: 2m
+      #   labels:
+          # severity: critical
+        # annotations:
+          # summary: "High HTTP 5xx error rate detected for {{ $labels.kubernetes_pod_name }}"

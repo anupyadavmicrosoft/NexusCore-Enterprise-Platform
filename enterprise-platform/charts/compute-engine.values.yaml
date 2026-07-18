@@ -1,0 +1,99 @@
+# Helm values for NexusCore Compute & Balance Engine
+replicaCount: 3
+
+nameOverride: "compute-engine"
+appLabel: "compute-engine"
+
+priorityClassName: "nexuscore-high"
+
+image:
+  repository: gcr.io/nexuscore-prod/compute-engine
+  tag: v1.0.0
+  pullPolicy: IfNotPresent
+
+service:
+  port: 8082
+  targetPort: 8082
+
+ingress:
+  enabled: false # Behind edge gateway
+
+config:
+  PORT: "8082"
+  KAFKA_BROKERS: "kafka-0.kafka-headless.nexuscore-data.svc.cluster.local:9092,kafka-1.kafka-headless.nexuscore-data.svc.cluster.local:9092,kafka-2.kafka-headless.nexuscore-data.svc.cluster.local:9092"
+  JAEGER_URL: "http://jaeger-collector.nexuscore-system.svc.cluster.local:4317"
+
+secrets:
+  DB_DSN: "postgres://postgres:enterprise_prod_db_sec_pass_88@postgres-primary.nexuscore-data.svc.cluster.local:5432/nexuscore_enterprise?sslmode=disable"
+
+resources:
+  limits:
+    cpu: 1000m
+    memory: 1024Mi
+  requests:
+    cpu: 500m
+    memory: 512Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 15
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+containerPorts:
+  - name: http
+    containerPort: 8082
+    protocol: TCP
+
+livenessProbe:
+  httpGet:
+    path: /api/v1/health
+    port: http
+  initialDelaySeconds: 15
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /api/v1/health
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 5
+
+networkPolicy:
+  enabled: true
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: api-gateway
+      ports:
+        - protocol: TCP
+          port: 8082
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: nexuscore-data
+      ports:
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 9092
+
+monitoring:
+  serviceMonitor:
+    enabled: true
+    interval: 15s
+    path: /metrics
+    port: http
+  prometheusRule:
+    enabled: true
+    rules:
+      - alert: ComputeLagAlarm
+        expr: kafka_consumer_lag{topic="balance-mutations"} > 5000
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Compute Engine partition consumer lag exceeded 5,000 messages."

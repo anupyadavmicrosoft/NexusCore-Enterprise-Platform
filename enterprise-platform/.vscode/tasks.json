@@ -1,0 +1,58 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Docker Compose: Start Dependencies",
+      "type": "shell",
+      "command": "docker-compose up -d postgres redis kafka zookeeper jaeger prometheus",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "group": "none"
+    },
+    {
+      "label": "Docker Compose: Stop All",
+      "type": "shell",
+      "command": "docker-compose down",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "group": "none"
+    },
+    {
+      "label": "NexusCore: Bootstrap Workspace",
+      "type": "shell",
+      "command": "bash scripts/bootstrap.sh",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "none"
+    },
+    {
+      "label": "NexusCore: Run Workspace Linters",
+      "type": "shell",
+      "command": "make lint",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "build"
+    },
+    {
+      "label": "NexusCore: Run Workspace Tests",
+      "type": "shell",
+      "command": "make test",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "test"
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: nexuscore-critical
+value: 1000000
+globalDefault: false
+description: "Used for core data stores, statefulsets, and edge controllers that should never be evicted."
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: nexuscore-high
+value: 500000
+globalDefault: false
+description: "Used for front-line user-facing microservices and API gateways."
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: nexuscore-normal
+value: 100000
+globalDefault: true
+description: "Standard scheduling class for general asynchronous microservice tasks."

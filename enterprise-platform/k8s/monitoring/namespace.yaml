@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: nexuscore-monitoring
+  labels:
+    name: nexuscore-monitoring
+    tier: infrastructure
+    observability: enabled

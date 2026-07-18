@@ -1,0 +1,45 @@
+name: NexusCore Auth Service CI
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'enterprise-platform/auth-service/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'enterprise-platform/auth-service/**'
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository source
+      uses: actions/checkout@v4
+
+    - name: Set up Go runtime environment
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.22'
+        cache-dependency-path: 'enterprise-platform/auth-service/go.sum'
+
+    - name: Download Go dependencies
+      run: |
+        cd enterprise-platform/auth-service
+        go mod download
+
+    - name: Run Go Code Linter
+      uses: golangci/golangci-lint-action@v6
+      with:
+        version: v1.59
+        working-directory: enterprise-platform/auth-service
+
+    - name: Run Auth Service Unit and Integration Tests
+      run: |
+        cd enterprise-platform/auth-service
+        go test -v -race -coverprofile=coverage.out ./...
+
+    - name: Build Secure Container Image
+      run: |
+        cd enterprise-platform/auth-service
+        docker build -t gcr.io/nexuscore-prod/auth-service:${{ github.sha }} .

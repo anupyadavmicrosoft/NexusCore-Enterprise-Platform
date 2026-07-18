@@ -1,0 +1,18 @@
+# -----------------------------------------------------------------------------
+# NEXUSCORE PRODUCTION INFRASTRUCTURE PARAMETERS SKELETON
+# Copy this file to 'terraform.tfvars' and supply sensitive production values.
+# -----------------------------------------------------------------------------
+
+# Core Target Project Identity
+project_id = "nexuscore-enterprise-prod-123456"
+region     = "us-central1"
+
+# Domain Configuration
+domain_name = "nexuscore-enterprise.com"
+subdomain   = "api.nexuscore-enterprise.com"
+
+# Alert Routing Logs
+notification_email = "ops@nexuscore-enterprise.com"
+
+# Sensitive Administration Secrets (Do not commit actual overrides to Git!)
+# db_password = "replace_with_highly_cryptographic_password_string_99"

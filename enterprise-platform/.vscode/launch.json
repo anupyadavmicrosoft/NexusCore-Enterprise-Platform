@@ -1,0 +1,60 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug: API Gateway",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}/api-gateway/cmd/server/main.go",
+      "cwd": "${workspaceFolder}/api-gateway",
+      "env": {
+        "PORT": "8080",
+        "AUTH_SERVICE_URL": "http://localhost:8081",
+        "COMPUTE_SERVICE_URL": "http://localhost:8082",
+        "JAEGER_URL": "http://localhost:4317",
+        "ENVIRONMENT": "development"
+      }
+    },
+    {
+      "name": "Debug: Auth Service",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}/auth-service/cmd/server/main.go",
+      "cwd": "${workspaceFolder}/auth-service",
+      "env": {
+        "PORT": "8081",
+        "DB_DSN": "postgres://postgres:enterprise_password_99@localhost:5432/nexuscore_enterprise?sslmode=disable",
+        "REDIS_ADDR": "localhost:6379",
+        "REDIS_PASS": "redis_secure_pass_77",
+        "JWT_SECRET": "super_cryptographic_secret_hash_key_111",
+        "JAEGER_URL": "http://localhost:4317"
+      }
+    },
+    {
+      "name": "Debug: Compute Engine",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}/compute-engine/cmd/server/main.go",
+      "cwd": "${workspaceFolder}/compute-engine",
+      "env": {
+        "PORT": "8082",
+        "DB_DSN": "postgres://postgres:enterprise_password_99@localhost:5432/nexuscore_enterprise?sslmode=disable",
+        "KAFKA_BROKERS": "localhost:9092",
+        "JAEGER_URL": "http://localhost:4317"
+      }
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Debug All Services",
+      "configurations": [
+        "Debug: API Gateway",
+        "Debug: Auth Service",
+        "Debug: Compute Engine"
+      ]
+    }
+  ]
+}

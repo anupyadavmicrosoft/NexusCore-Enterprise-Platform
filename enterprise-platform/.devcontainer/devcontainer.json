@@ -1,0 +1,38 @@
+{
+  "name": "NexusCore Go Multi-Module Developer Container",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "settings": {
+    "go.gopath": "/go",
+    "go.useLanguageServer": true,
+    "go.lintTool": "golangci-lint",
+    "go.lintFlags": ["--fast"],
+    "go.toolsManagement.checkForUpdates": "local",
+    "go.autocompleteUnimportedPackages": true,
+    "go.formatTool": "goimports",
+    "go.gocodeAutoBuild": false,
+    "files.watcherExclude": {
+      "**/node_modules/**": true,
+      "**/.git/**": true,
+      "**/dist/**": true
+    },
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": "explicit"
+    }
+  },
+  "extensions": [
+    "golang.go",
+    "hashicorp.terraform",
+    "ms-azuretools.vscode-docker",
+    "redhat.vscode-yaml",
+    "eamodio.gitlens",
+    "esbenp.prettier-vscode",
+    "dbaeumer.vscode-eslint"
+  ],
+  "forwardPorts": [8080, 8081, 8082, 5432, 6379, 9092, 9090, 16686],
+  "postCreateCommand": "bash scripts/bootstrap.sh",
+  "remoteUser": "vscode"
+}
