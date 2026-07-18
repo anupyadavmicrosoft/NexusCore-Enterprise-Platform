@@ -1,0 +1,36 @@
+# ==============================================================================
+# ArgoCD AppProject CRD - Security Sandbox and Boundary Enforcement
+# Enforces namespace segregation and allowed resource white-listing
+# ==============================================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: nexuscore-core-project
+  namespace: argocd
+spec:
+  description: "Enterprise Security Boundary for transactional NexusCore production resources"
+
+  # Whitelisted source repositories authorized to supply manifests
+  sourceRepos:
+    - 'https://github.com/nexuscore-org/nexus-platform-deploy.git'
+
+  # Whitelisted destination cluster boundaries (Only allow local production cluster)
+  destinations:
+    - server: 'https://kubernetes.default.svc'
+      namespace: nexus-core
+    - server: 'https://kubernetes.default.svc'
+      namespace: security
+
+  # Whitelisted namespaced API groups permitted to deploy
+  clusterResourceWhitelist:
+    - group: ''
+      kind: Namespace
+
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*' # Allow all namespaced resources to be provisioned inside authorized namespaces
+
+  # Enforcement of orphaned resource monitoring (triggers alarms on unrecognized cluster objects)
+  orphanedResources:
+    warn: true

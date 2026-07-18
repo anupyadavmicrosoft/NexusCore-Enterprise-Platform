@@ -1,0 +1,81 @@
+# ==============================================================================
+# Helm Values.yaml - Enterprise Configuration Profile
+# Dynamic values, no placeholders, parameterizes every cluster dependency
+# ==============================================================================
+
+global:
+  environment: production
+  region: us-east1
+  projectID: nexuscore-prod-39401
+
+replicaCount: 3
+
+image:
+  repository: gcr.io/nexuscore-prod-39401/api-gateway
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: "v2.4.1"
+
+service:
+  type: ClusterIP
+  port: 8080
+  metricsPort: 9090
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/limit-rps: "100"
+    cert-manager.io/cluster-issuer: "letsencrypt-production"
+  hosts:
+    - host: api.nexuscore.enterprise.com
+      paths:
+        - path: /api/v2
+          pathType: Prefix
+  tls:
+    - secretName: nexuscore-tls-certs
+      hosts:
+        - api.nexuscore.enterprise.com
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 1024Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 12
+  targetCPUUtilizationPercentage: 75
+  targetMemoryUtilizationPercentage: 85
+
+securityContext:
+  runAsUser: 10001
+  runAsGroup: 10001
+  runAsNonRoot: true
+  fsGroup: 10001
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+env:
+  NODE_ENV: "production"
+  AUTH_SERVICE_URL: "http://auth-service.nexus-core.svc.cluster.local:8081"
+  COMPUTE_ENGINE_URL: "http://compute-engine.nexus-core.svc.cluster.local:8082"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://telemetry-collector.monitoring.svc.cluster.local:4317"
+
+database:
+  host: "10.10.32.4"
+  port: 5432
+  user: "nexus_app_svc"
+  secretName: "cloudsql-db-credentials"
+  secretKey: "database-password"

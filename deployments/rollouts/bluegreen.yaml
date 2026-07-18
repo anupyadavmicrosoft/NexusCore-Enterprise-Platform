@@ -1,0 +1,66 @@
+# ==============================================================================
+# Argo Rollouts Custom Resource - Blue/Green Deployment Strategy
+# Orchestrates zero-downtime cutovers and manual promotion overrides
+# ==============================================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: api-gateway-rollout-bluegreen
+  namespace: nexus-core
+spec:
+  replicas: 4
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: api-gateway-bluegreen
+  template:
+    metadata:
+      labels:
+        app: api-gateway-bluegreen
+    spec:
+      containers:
+        - name: gateway
+          image: gcr.io/nexuscore-prod-39401/api-gateway:v2.4.0
+          ports:
+            - name: http
+              containerPort: 8080
+
+  strategy:
+    blueGreen:
+      # Active service points client traffic to Blue pods
+      activeService: api-gateway-active
+      # Preview service targets the newly provisioned Green pods for staging checks
+      previewService: api-gateway-preview
+      
+      # Automatically cut over traffic to new version once staging health is verified
+      autoPromotionEnabled: false # Pauses deployment before cutover for manual principal review
+      autoPromotionSeconds: 300   # Auto-promotes after 5 minutes if no manual rollback is flagged
+
+      # Execution of pre-promotion structural validation suites
+      prePromotionAnalysis:
+        templates:
+          - templateName: custom-smoketest-analysis
+        args:
+          - name: test-endpoint
+            value: http://api-gateway-preview.nexus-core.svc.cluster.local:8080/api/health/ready
+
+---
+# Analysis Template executing custom integration and smoketest benchmarks on the Green stack
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: custom-smoketest-analysis
+  namespace: nexus-core
+spec:
+  metrics:
+    - name: smoketest-http-probe
+      interval: 30s
+      count: 3
+      successCondition: result[0] == 200
+      provider:
+        web:
+          url: http://smoketest-runner.security.svc.cluster.local:9100/run-probe
+          headers:
+            - key: Authorization
+              value: Bearer k8s-smoketest-token-a90x

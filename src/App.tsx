@@ -13,10 +13,14 @@ import ServiceDesigner from "./components/ServiceDesigner";
 import Playground from "./components/Playground";
 import EventDrivenDashboard from "./components/EventDrivenDashboard";
 import AIPlatformDashboard from "./components/AIPlatformDashboard";
-import { Server, Activity, Shield, Cpu, Play, RefreshCw, Terminal, Layers, HelpCircle, HardDrive, Cpu as CpuIcon, Network, Database } from "lucide-react";
+import ZeroTrustDashboard from "./components/ZeroTrustDashboard";
+import GitOpsDashboard from "./components/GitOpsDashboard";
+import TestingDashboard from "./components/TestingDashboard";
+import EnterpriseDocsDashboard from "./components/EnterpriseDocsDashboard";
+import { Server, Activity, Shield, Cpu, Play, RefreshCw, Terminal, Layers, HelpCircle, HardDrive, Cpu as CpuIcon, Network, Database, GitBranch, BookOpen } from "lucide-react";
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<"topology" | "metrics" | "tracing" | "designer" | "playground" | "event-driven" | "ai-platform">("topology");
+  const [activeTab, setActiveTab] = useState<"topology" | "metrics" | "tracing" | "designer" | "playground" | "event-driven" | "ai-platform" | "zero-trust" | "gitops" | "testing" | "docs">("topology");
   const [currentWorkload, setCurrentWorkload] = useState<string>("normal");
   const [deployedServices, setDeployedServices] = useState<ServiceCode[]>([]);
 
@@ -443,7 +447,71 @@ export default function App() {
             <span className="text-[10px] bg-indigo-500/10 text-indigo-400 px-1.5 py-0.5 rounded border border-indigo-500/20 font-bold font-mono">v1.5.0</span>
           </button>
 
+          <div className="mt-8 text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3 px-2">Security & Governance</div>
+
+          <button
+            onClick={() => setActiveTab("zero-trust")}
+            className={`w-full text-left px-3 py-2 rounded-md flex items-center justify-between text-xs transition-all ${
+              activeTab === "zero-trust"
+                ? "bg-slate-800/80 text-white font-semibold border border-slate-700/50"
+                : "text-slate-400 hover:bg-slate-800/40 hover:text-slate-200"
+            }`}
+          >
+            <span className="flex items-center">
+              <Shield className="text-indigo-400 mr-3" size={13} />
+              Zero Trust Security
+            </span>
+            <span className="text-[10px] bg-indigo-500/10 text-indigo-400 px-1.5 py-0.5 rounded border border-indigo-500/20 font-bold font-mono">PEP</span>
+          </button>
+
+          <div className="mt-8 text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3 px-2">Infrastructure & GitOps</div>
+
+          <button
+            onClick={() => setActiveTab("gitops")}
+            className={`w-full text-left px-3 py-2 rounded-md flex items-center justify-between text-xs transition-all ${
+              activeTab === "gitops"
+                ? "bg-slate-800/80 text-white font-semibold border border-slate-700/50"
+                : "text-slate-400 hover:bg-slate-800/40 hover:text-slate-200"
+            }`}
+          >
+            <span className="flex items-center">
+              <GitBranch className="text-indigo-400 mr-3" size={13} />
+              GitOps & Deployment
+            </span>
+            <span className="text-[10px] bg-indigo-500/10 text-indigo-400 px-1.5 py-0.5 rounded border border-indigo-500/20 font-bold font-mono">v1.3.0</span>
+          </button>
+
           <div className="mt-8 text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3 px-2">Architecture & Testing</div>
+
+          <button
+            onClick={() => setActiveTab("docs")}
+            className={`w-full text-left px-3 py-2 rounded-md flex items-center justify-between text-xs transition-all ${
+              activeTab === "docs"
+                ? "bg-slate-800/80 text-white font-semibold border border-slate-700/50"
+                : "text-slate-400 hover:bg-slate-800/40 hover:text-slate-200"
+            }`}
+          >
+            <span className="flex items-center">
+              <BookOpen className="text-indigo-400 mr-3" size={13} />
+              Enterprise Specs
+            </span>
+            <span className="text-[10px] bg-indigo-500/10 text-indigo-400 px-1.5 py-0.5 rounded border border-indigo-500/20 font-bold font-mono">9 Specs</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("testing")}
+            className={`w-full text-left px-3 py-2 rounded-md flex items-center justify-between text-xs transition-all ${
+              activeTab === "testing"
+                ? "bg-slate-800/80 text-white font-semibold border border-slate-700/50"
+                : "text-slate-400 hover:bg-slate-800/40 hover:text-slate-200"
+            }`}
+          >
+            <span className="flex items-center">
+              <span className="w-2 h-2 bg-indigo-500 rounded-full mr-3 animate-pulse" />
+              Continuous Testing
+            </span>
+            <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/20 font-bold font-mono">97.8%</span>
+          </button>
 
           <button
             onClick={() => setActiveTab("designer")}
@@ -504,6 +572,9 @@ export default function App() {
           { id: "tracing", name: "Traces & Logs" },
           { id: "event-driven", name: "Event-Driven" },
           { id: "ai-platform", name: "AI Gateway" },
+          { id: "zero-trust", name: "Zero Trust" },
+          { id: "gitops", name: "GitOps" },
+          { id: "testing", name: "Continuous Testing" },
           { id: "designer", name: "AI Architect" },
           { id: "playground", name: "Playground" }
         ].map(tab => (
@@ -605,6 +676,22 @@ export default function App() {
 
               {activeTab === "ai-platform" && (
                 <AIPlatformDashboard />
+              )}
+
+              {activeTab === "zero-trust" && (
+                <ZeroTrustDashboard />
+              )}
+
+              {activeTab === "gitops" && (
+                <GitOpsDashboard />
+              )}
+
+              {activeTab === "testing" && (
+                <TestingDashboard />
+              )}
+
+              {activeTab === "docs" && (
+                <EnterpriseDocsDashboard />
               )}
             </motion.div>
           </AnimatePresence>

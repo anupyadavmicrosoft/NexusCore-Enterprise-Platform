@@ -1,0 +1,14 @@
+apiVersion: v2
+name: nexus-core-chart
+description: Enterprise Helm Chart for orchestrating the core NexusCore cloud platform services
+type: application
+version: 2.4.1
+appVersion: "2.4.1"
+maintainers:
+  - name: NexusCore Devops Team
+    email: devops@nexuscore.enterprise.com
+keywords:
+  - gateway
+  - kubernetes
+  - microservices
+  - transactional-core

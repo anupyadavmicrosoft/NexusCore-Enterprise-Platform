@@ -1,0 +1,50 @@
+# ==============================================================================
+# Kubernetes Horizontal Pod Autoscaler (HPA) Specification
+# Dynamically scales replicas on CPU and Memory triggers (autoscaling)
+# ==============================================================================
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api-gateway-hpa
+  namespace: nexus-core
+  labels:
+    app.kubernetes.io/name: api-gateway
+    app.kubernetes.io/part-of: nexus-core
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api-gateway
+  minReplicas: 3
+  maxReplicas: 12
+  metrics:
+    # 1. Scale based on CPU average utilization exceeding 75%
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 75
+    # 2. Scale based on Memory usage exceeding 85% to mitigate memory leak crashings
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 85
+  
+  # Fine-tuned cooldown and scale-up thresholds to avoid metric flapping
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 15
+    scaleDown:
+      stabilizationWindowSeconds: 300 # Wait 5 minutes before consolidating nodes to ensure traffic is completely stabilized
+      policies:
+        - type: Percent
+          value: 10
+          periodSeconds: 60

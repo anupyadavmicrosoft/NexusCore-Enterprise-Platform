@@ -4,7 +4,17 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 import fs from "fs";
+import crypto from "crypto";
 import { store, getEmbedding, runChatCompletion, executeRAGChain } from "./aiEngine";
+import {
+  securityStore,
+  rotateWorkloadSvid,
+  rotateVaultSecret,
+  generateKeycloakJwt,
+  evaluateOpaPolicy,
+  triggerSimulatedRateLimitHit,
+  type ApiKeyDetail
+} from "./securityEngine";
 
 dotenv.config();
 
@@ -157,6 +167,244 @@ app.post("/api/ai/chat/message", async (req, res) => {
     }
     const result = await runChatCompletion(sessionId, message, modelOverride);
     res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==========================================
+// ZERO TRUST SECURITY EDGE API ENDPOINTS
+// ==========================================
+
+// SPIFFE / SVID Workload Identities
+app.get("/api/security/svids", (req, res) => {
+  res.json({
+    svids: securityStore.svids,
+    rotationLogs: securityStore.rotationLogs
+  });
+});
+
+app.post("/api/security/svids/rotate", (req, res) => {
+  try {
+    const { spiffeId } = req.body;
+    if (!spiffeId) {
+      return res.status(400).json({ error: "SPIFFE ID is required" });
+    }
+    const result = rotateWorkloadSvid(spiffeId);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Vault Secrets
+app.get("/api/security/secrets", (req, res) => {
+  res.json(securityStore.secrets);
+});
+
+app.post("/api/security/secrets/rotate", (req, res) => {
+  try {
+    const { path, data } = req.body;
+    if (!path || !data) {
+      return res.status(400).json({ error: "Path and secret data payload are required" });
+    }
+    const result = rotateVaultSecret(path, data);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Transit Cryptographic Keys
+app.get("/api/security/transit-keys", (req, res) => {
+  res.json(securityStore.transitKeys);
+});
+
+app.post("/api/security/transit-keys/rotate", (req, res) => {
+  try {
+    const { name } = req.body;
+    const key = securityStore.transitKeys.find(k => k.name === name);
+    if (!key) {
+      return res.status(404).json({ error: "Transit key not found" });
+    }
+    key.lastRotated = new Date().toISOString();
+    key.status = "active";
+    
+    securityStore.logAudit(
+      "secrets",
+      "Transit Key Rotated",
+      "admin",
+      "vault-server",
+      "success",
+      `Rotated cryptographical transit key mapping [${name}]. Re-encrypted master ciphertext payload.`,
+      "info"
+    );
+    
+    res.json({ message: "Transit key rotated successfully", key });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Keycloak OAuth / JWT
+app.get("/api/security/users", (req, res) => {
+  res.json(securityStore.keycloakUsers);
+});
+
+app.post("/api/security/users/jwt", (req, res) => {
+  try {
+    const { userId } = req.body;
+    if (!userId) {
+      return res.status(400).json({ error: "User ID is required" });
+    }
+    const tokenDetail = generateKeycloakJwt(userId);
+    res.json(tokenDetail);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// OPA Policies
+app.get("/api/security/opa/policies", (req, res) => {
+  res.json(securityStore.opaPolicies);
+});
+
+app.post("/api/security/opa/policies", (req, res) => {
+  try {
+    const { id, regoCode } = req.body;
+    const policy = securityStore.opaPolicies.find(p => p.id === id);
+    if (!policy) {
+      return res.status(404).json({ error: "OPA policy not found" });
+    }
+    policy.regoCode = regoCode;
+    policy.updatedAt = new Date().toISOString();
+    
+    securityStore.logAudit(
+      "authorization",
+      "OPA Policy Updated",
+      "admin",
+      "opa-server",
+      "success",
+      `Committed structural Rego modifications to active policy rule: "${policy.name}"`,
+      "info"
+    );
+    
+    res.json({ message: "OPA policy saved successfully", policy });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/security/opa/evaluate", (req, res) => {
+  try {
+    const { policyId, request } = req.body;
+    if (!policyId || !request) {
+      return res.status(400).json({ error: "Policy ID and request payload are required" });
+    }
+    const result = evaluateOpaPolicy(policyId, request);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// API Keys Manager
+app.get("/api/security/api-keys", (req, res) => {
+  res.json(securityStore.apiKeys);
+});
+
+app.post("/api/security/api-keys", (req, res) => {
+  try {
+    const { name, ownerService, allowedMethods, rateLimitRps } = req.body;
+    if (!name || !ownerService) {
+      return res.status(400).json({ error: "Name and owner service are required" });
+    }
+    
+    const id = "key_" + Math.random().toString(36).substring(2, 11);
+    const rawKey = "nxs_live_" + crypto.randomBytes(8).toString("hex");
+    const prefix = rawKey.substring(0, 14);
+    const hash = crypto.createHash("sha256").update(rawKey).digest("hex");
+    
+    const newApiKey: ApiKeyDetail = {
+      id,
+      name,
+      prefix,
+      hash,
+      ownerService,
+      allowedMethods: allowedMethods || ["GET"],
+      rateLimitRps: Number(rateLimitRps) || 10,
+      status: "active",
+      createdAt: new Date().toISOString()
+    };
+    
+    securityStore.apiKeys.push(newApiKey);
+    
+    securityStore.logAudit(
+      "authentication",
+      "API Key Generated",
+      "admin",
+      "auth-gateway",
+      "success",
+      `Created API key credentials [${name}] assigned to service: "${ownerService}"`,
+      "info"
+    );
+    
+    res.status(201).json({ key: newApiKey, plainKey: rawKey });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/security/api-keys/revoke", (req, res) => {
+  try {
+    const { id } = req.body;
+    const key = securityStore.apiKeys.find(k => k.id === id);
+    if (!key) {
+      return res.status(404).json({ error: "API Key not found" });
+    }
+    key.status = "revoked";
+    
+    securityStore.logAudit(
+      "authentication",
+      "API Key Revoked",
+      "admin",
+      "auth-gateway",
+      "success",
+      `Revoked client API key access permissions: "${key.name}"`,
+      "warning"
+    );
+    
+    res.json({ message: "API key revoked successfully", key });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Audit log tracing
+app.get("/api/security/audit-logs", (req, res) => {
+  res.json(securityStore.auditLogs);
+});
+
+// Throttling / Rate Limiting simulations
+app.get("/api/security/rate-limit/metrics", (req, res) => {
+  res.json({
+    metrics: securityStore.rateLimitMetrics,
+    config: {
+      rateLimitRps: 100,
+      burstCapacity: 150,
+      algorithm: "sliding-window-counter"
+    }
+  });
+});
+
+app.post("/api/security/rate-limit/simulate", (req, res) => {
+  try {
+    const { clientId } = req.body;
+    if (!clientId) {
+      return res.status(400).json({ error: "Client identification tag is required" });
+    }
+    const metric = triggerSimulatedRateLimitHit(clientId);
+    res.json(metric);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

@@ -1,0 +1,155 @@
+# ==============================================================================
+# Kubernetes Deployment & Service Manifest - API Gateway Ingress Router
+# Enforces Pod Anti-Affinity, non-root runtimes, and health-checks
+# ==============================================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  namespace: nexus-core
+  labels:
+    app.kubernetes.io/name: api-gateway
+    app.kubernetes.io/part-of: nexus-core
+    app.kubernetes.io/component: ingress-router
+    app.kubernetes.io/version: "2.4.1"
+spec:
+  replicas: 3
+  
+  # Rolling Update Strategy for Zero-Downtime Deployment
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 0
+
+  selector:
+    matchLabels:
+      app: api-gateway
+  
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+        app.kubernetes.io/name: api-gateway
+        nexus-otel-monitoring: "true"
+    spec:
+      # Enforce Pod Anti-Affinity to distribute replicas across different nodes for resilience
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - api-gateway
+                topologyKey: kubernetes.io/hostname
+
+      # Run as non-privileged service user account defined in our Dockerfile
+      securityContext:
+        runAsUser: 10001
+        runAsGroup: 10001
+        runAsNonRoot: true
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: gateway-container
+          image: gcr.io/nexuscore-prod-39401/api-gateway:v2.4.1
+          imagePullPolicy: IfNotPresent
+          
+          # Container port configurations
+          ports:
+            - name: http-traffic
+              containerPort: 8080
+              protocol: TCP
+            - name: prometheus-metrics
+              containerPort: 9090
+              protocol: TCP
+
+          # Hardened local file system access permissions
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - ALL
+
+          # Resource Limits and Requests - Strictly Allocated (Guaranteed QoS Class)
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1024Mi"
+
+          # Health check probe definitions
+          livenessProbe:
+            httpGet:
+              path: /api/health/live
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /api/health/ready
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 2
+            successThreshold: 1
+            failureThreshold: 2
+
+          # Microservice environment variable injections
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: AUTH_SERVICE_URL
+              value: "http://auth-service.nexus-core.svc.cluster.local:8081"
+            - name: COMPUTE_ENGINE_URL
+              value: "http://compute-engine.nexus-core.svc.cluster.local:8082"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://telemetry-collector.monitoring.svc.cluster.local:4317"
+            - name: DB_HOST
+              value: "10.10.32.4" # Internal private Google Cloud SQL Proxy connection IP
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_USER
+              value: "nexus_app_svc"
+            # Injected securely via Kubernetes Secrets (referenced directly below)
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: cloudsql-db-credentials
+                  key: database-password
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-gateway
+  namespace: nexus-core
+  labels:
+    app.kubernetes.io/name: api-gateway
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http-traffic
+      protocol: TCP
+    - name: metrics
+      port: 9090
+      targetPort: prometheus-metrics
+      protocol: TCP
+  selector:
+    app: api-gateway

@@ -1,0 +1,41 @@
+global:
+  environment: production
+  domain: nexuscore.enterprise.internal
+
+apiGateway:
+  replicaCount: 3
+  image:
+    repository: gcr.io/nexuscore-prod/api-gateway
+    tag: v1.0.0
+    pullPolicy: IfNotPresent
+  
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+    requests:
+      cpu: 200m
+      memory: 128Mi
+
+  service:
+    type: ClusterIP
+    port: 8080
+
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 75
+
+  env:
+    LOG_LEVEL: "INFO"
+    AUTH_SERVICE_URL: "http://auth-service.nexus-core.svc.cluster.local:8081"
+    COMPUTE_SERVICE_URL: "http://compute-engine.nexus-core.svc.cluster.local:8082"
+    RATE_LIMIT_REFILL: "50.0"
+    RATE_LIMIT_BURST: "500"
+    CIRCUIT_FAILURE_RATE: "0.5"
+    CIRCUIT_COOLDOWN: "5s"
+    ENABLE_CACHING: "true"
+    CACHE_TTL: "60s"
+    REQUEST_TIMEOUT: "10s"
+    MAX_RETRY_ATTEMPTS: "3"

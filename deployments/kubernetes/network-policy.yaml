@@ -1,0 +1,109 @@
+# ==============================================================================
+# Kubernetes Network Policies - Zero Trust Microsegmentation
+# Blocks all ingress/egress by default; explicitly authorizes service communication
+# ==============================================================================
+
+# 1. Deny-All ingress and egress traffic by default for all workloads in 'nexus-core'
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: nexus-core
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+---
+# 2. Allow External/Ingress Controller traffic only into 'api-gateway'
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-gateway-ingress
+  namespace: nexus-core
+spec:
+  podSelector:
+    matchLabels:
+      app: api-gateway
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        # Allow ingress traffic from the NGINX Ingress Controller pods running in 'ingress-nginx' namespace
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    # Gateway can resolve DNS queries to the kube-system DNS Core pods
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Gateway can talk to 'auth-service' for token authorizations
+    - to:
+        - podSelector:
+            matchLabels:
+              app: auth-service
+      ports:
+        - protocol: TCP
+          port: 8081
+    # Gateway can talk to 'compute-engine' for transaction workflows
+    - to:
+        - podSelector:
+            matchLabels:
+              app: compute-engine
+      ports:
+        - protocol: TCP
+          port: 8082
+
+---
+# 3. Restrict 'compute-engine' traffic boundaries (Only allow ingress from api-gateway)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: restrict-compute-engine
+  namespace: nexus-core
+spec:
+  podSelector:
+    matchLabels:
+      app: compute-engine
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow compute engine to receive calls ONLY from the gateway
+    - from:
+        - podSelector:
+            matchLabels:
+              app: api-gateway
+      ports:
+        - protocol: TCP
+          port: 8082
+  egress:
+    # Core system DNS resolution
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+    # Egress to private database endpoint in us-east1 subnet
+    - to:
+        - ipBlock:
+            cidr: "10.10.32.0/24" # Cloud SQL Peered IP Address Block range
+      ports:
+        - protocol: TCP
+          port: 5432

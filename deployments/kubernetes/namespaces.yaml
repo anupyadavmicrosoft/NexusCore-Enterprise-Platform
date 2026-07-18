@@ -1,0 +1,30 @@
+# ==============================================================================
+# Kubernetes Core Namespaces configuration
+# Partitions the cluster into security boundaries and administrative scopes
+# ==============================================================================
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: security
+  labels:
+    name: security
+    istio-injection: disabled
+    nexus-zone: perimeter-auth
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: nexus-core
+  labels:
+    name: nexus-core
+    istio-injection: enabled # Enable automatic Istio sidecar proxy injection for service-mesh mTLS
+    nexus-zone: transactional-core
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    name: monitoring
+    nexus-zone: telemetry-plane

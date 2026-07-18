@@ -1,0 +1,75 @@
+# ==============================================================================
+# Prometheus Alerting Rules - Kubernetes Monitoring Plane
+# Definitive threshold triggers for automated site reliability engineering (SRE)
+# ==============================================================================
+
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: nexuscore-alerts
+  namespace: monitoring
+  labels:
+    role: alert-rules
+    app: prometheus
+spec:
+  groups:
+    - name: nexuscore-latency-alerts
+      rules:
+        # Alert if p99 latency exceeds 500ms for more than 2 consecutive minutes
+        - alert: APIHighLatencyP99
+          expr: histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le)) > 0.5
+          for: 2m
+          labels:
+            severity: warning
+            team: transactional-core
+          annotations:
+            summary: "API Gateway high latency detected (p99 > 500ms)"
+            description: "The API gateway p99 response time is currently {{ $value }}s, indicating degraded database performance or network saturation."
+
+        # Alert if HTTP 5xx error rates exceed 5% of total requests
+        - alert: HighHttp5xxErrorRate
+          expr: (sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m]))) * 100 > 5
+          for: 1m
+          labels:
+            severity: critical
+            team: platform-core
+          annotations:
+            summary: "Critical volume of HTTP 5xx errors: {{ $value }}%"
+            description: "API gateway is returning elevated 5xx error rates, indicating unhandled application exceptions or downstream service failures."
+
+    - name: nexuscore-kubernetes-infrastructure-alerts
+      rules:
+        # Alert if a pod is caught in a CrashLoopBackOff state
+        - alert: PodInCrashLoop
+          expr: rate(kube_pod_container_status_restarts_total[5m]) * 60 > 2
+          for: 3m
+          labels:
+            severity: critical
+            team: cluster-operations
+          annotations:
+            summary: "Kubernetes Pod CrashLoopBackOff: {{ $labels.pod }}"
+            description: "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} is restarting frequently ({{ $value }} times/min), suggesting misconfigurations or memory exhaustion."
+
+        # Alert if the Horizontal Pod Autoscaler has hit max replica capacity and CPU is still high
+        - alert: HPAMaxedOut
+          expr: kube_horizontalpodautoscaler_status_current_replicas == kube_horizontalpodautoscaler_status_desired_replicas and kube_horizontalpodautoscaler_spec_max_replicas == kube_horizontalpodautoscaler_status_current_replicas
+          for: 5m
+          labels:
+            severity: warning
+            team: performance-tuning
+          annotations:
+            summary: "HPA at maximum replica limits (Replicas = {{ $value }})"
+            description: "The Horizontal Pod Autoscaler has fully scaled up to max limits. Cluster resources may saturate if load continues to escalate."
+
+    - name: nexuscore-cloudsql-postgres-alerts
+      rules:
+        # Alert if active database connection pooling limits are near capacity
+        - alert: CloudSQLConnectionsExhausted
+          expr: (cloudsql_database_connections_count / cloudsql_database_connections_limit) * 100 > 85
+          for: 3m
+          labels:
+            severity: critical
+            team: dba-operations
+          annotations:
+            summary: "Cloud SQL connection pool saturating (Usage: {{ $value }}%)"
+            description: "Active Postgres connections are currently {{ $value }}% of maximum allowed thresholds. Investigate socket leaks in microservices."

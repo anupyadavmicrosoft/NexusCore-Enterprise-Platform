@@ -1,0 +1,76 @@
+# ==============================================================================
+# Production Multi-Stage Dockerfile for NexusCore Go Services (api-gateway)
+# Security Hardened, Non-Root execution, OCI-Compliant, Optimized Build Caching
+# ==============================================================================
+
+# -- Stage 1: Dependency Resolution and Compilation --
+FROM golang:1.22.4-alpine3.20 AS builder
+
+# Set shell and enforce system security standards
+SHELL ["/bin/sh", "-ec"]
+
+# Install runtime build dependencies (git, security certificates, build tools)
+RUN apk update && apk add --no-cache \
+    ca-certificates \
+    tzdata \
+    git \
+    make
+
+# Create unprivileged system user for the runtime container
+RUN addgroup -S -g 10001 nexusgroup && \
+    adduser -S -u 10001 -g nexusgroup -h /home/nexususer nexususer
+
+WORKDIR /build
+
+# Cache dependencies using Go Module layer
+COPY go.mod ./
+# If go.sum exists, copy it (use wildcard to prevent failures if absent)
+COPY go.su[m] ./
+RUN go mod download
+
+# Copy source repository code
+COPY cmd/ cmd/
+# COPY internal/ internal/ # Copy other source folders if present
+
+# Compile statically linked binary with optimization flags (omit symbols/debuggers)
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+    -a \
+    -installsuffix cgo \
+    -ldflags="-s -w -X main.Version=v2.4.1 -X main.Environment=production" \
+    -o /build/nexus-service ./cmd/server/main.go
+
+# -- Stage 2: Distroless/Static Runtime --
+# Use static-debian12 distroless image (no shell, zero system package vulnerabilities)
+FROM gcr.io/distroless/static-debian12:nonroot
+
+LABEL org.opencontainers.image.title="NexusCore API Gateway" \
+      org.opencontainers.image.description="High performance, Envoy-backed ingress routing service" \
+      org.opencontainers.image.version="2.4.1" \
+      org.opencontainers.image.vendor="NexusCore" \
+      org.opencontainers.image.licenses="Apache-2.0"
+
+# Import system identities from builder stage
+COPY --from=builder /etc/passwd /etc/passwd
+COPY --from=builder /etc/group /etc/group
+COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+
+# Copy statically built application binary
+COPY --from=builder --chown=nonroot:nonroot /build/nexus-service /app/nexus-service
+
+# Configure runtime environment
+WORKDIR /app
+USER 10001:10001
+
+# Expose standard Envoy routing port
+EXPOSE 8080
+EXPOSE 9090
+
+# Standard environment declarations
+ENV PORT=8080 \
+    METRICS_PORT=9090 \
+    GODEBUG=netdns=go \
+    TZ=UTC
+
+# Run application entry point
+ENTRYPOINT ["/app/nexus-service"]

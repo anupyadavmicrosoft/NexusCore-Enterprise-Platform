@@ -1,0 +1,49 @@
+# ==============================================================================
+# ArgoCD Application CRD - Declarative GitOps Sync Configuration
+# Automates Kubernetes cluster synchronization with git source of truth
+# ==============================================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: nexuscore-prod-platform
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io # Enable cascade resource deletion
+spec:
+  project: nexuscore-core-project
+
+  source:
+    repoURL: 'https://github.com/nexuscore-org/nexus-platform-deploy.git'
+    targetRevision: HEAD
+    path: deployments/helm/nexus-core-chart
+    
+    # Overriding default Helm chart parameters directly
+    helm:
+      valueFiles:
+        - values.yaml
+      parameters:
+        - name: replicaCount
+          value: '3'
+        - name: global.environment
+          value: 'production'
+
+  # Target environment cluster endpoint
+  destination:
+    server: 'https://kubernetes.default.svc'
+    namespace: nexus-core
+
+  # Declarative synchronization policy enforcement
+  syncPolicy:
+    automated:
+      prune: true       # Automatically deletes obsolete resources absent in git repository
+      selfHeal: true    # Automatically overrides manual drift changes inside cluster with git values
+    syncOptions:
+      - CreateNamespace=true  # Auto-provision target namespace if missing
+      - ApplyOutOfSyncOnly=true
+    retry:
+      limit: 5 # Maximum sync retries
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m0s

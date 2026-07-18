@@ -1,0 +1,136 @@
+# ==============================================================================
+# GitHub Actions - Continuous Integration & Continuous Delivery Pipeline
+# High-fidelity pipeline orchestrating builds, container checks, and GKE gitops
+# ==============================================================================
+
+name: "NexusCore Platform CI/CD"
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  PROJECT_ID: "nexuscore-prod-39401"
+  GAR_LOCATION: "us-east1-docker.pkg.dev"
+  REPOSITORY: "nexuscore-prod"
+  SERVICE_NAME: "api-gateway"
+  CLUSTER_NAME: "nexuscore-production-cluster"
+  CLUSTER_REGION: "us-east1"
+
+jobs:
+  quality-assurance:
+    name: "System Validation & Testing"
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Checkout repository"
+        uses: actions/checkout@v4
+
+      - name: "Set up Go compiler"
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+
+      - name: "Lint source files"
+        run: |
+          go vet ./...
+          # Run shadow analysis to prevent variable masking
+          go install golang.org/x/tools/go/analysis/passes/shadow/cmd/shadow@latest
+          shadow ./...
+
+      - name: "Execute Unit Testing Suite"
+        run: |
+          go test -race -v -coverprofile=coverage.out -covermode=atomic ./...
+
+  containerization:
+    name: "Docker Build, Sign & Push"
+    needs: quality-assurance
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # Required for secure Workload Identity Federation with GCP
+    steps:
+      - name: "Checkout code"
+        uses: actions/checkout@v4
+
+      - name: "Set up QEMU for multi-arch builds"
+        uses: docker/setup-qemu-action@v3
+
+      - name: "Set up Docker Buildx"
+        uses: docker/setup-buildx-action@v3
+
+      - name: "Authenticate with Google Cloud Platform"
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: "projects/1234567890/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+          service_account: "github-deployer@nexuscore-prod-39401.iam.gserviceaccount.com"
+
+      - name: "Set up GCP SDK"
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: "Configure Docker Credentials"
+        run: |
+          gcloud auth configure-docker us-east1-docker.pkg.dev --quiet
+
+      - name: "Build and Push optimized Docker Image"
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./deployments/docker/Dockerfile.api-gateway
+          push: true
+          tags: |
+            us-east1-docker.pkg.dev/nexuscore-prod-39401/nexuscore-prod/api-gateway:${{ github.sha }}
+            us-east1-docker.pkg.dev/nexuscore-prod-39401/nexuscore-prod/api-gateway:latest
+          cache-from: type=registry,ref=us-east1-docker.pkg.dev/nexuscore-prod-39401/nexuscore-prod/api-gateway:buildcache
+          cache-to: type=registry,ref=us-east1-docker.pkg.dev/nexuscore-prod-39401/nexuscore-prod/api-gateway:buildcache,mode=max
+
+  infrastructure-iac:
+    name: "Terraform IaC Convergence"
+    needs: quality-assurance
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Checkout code"
+        uses: actions/checkout@v4
+
+      - name: "Set up Terraform CLI"
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.5.0"
+
+      - name: "Initialize Terraform directories"
+        run: terraform init
+        working-directory: ./deployments/terraform
+
+      - name: "Validate IaC Syntax"
+        run: terraform validate
+        working-directory: ./deployments/terraform
+
+      - name: "Generate Dry-Run Execution Plan"
+        run: terraform plan -out=tfplan -input=false
+        working-directory: ./deployments/terraform
+
+      # Executed only on merge to primary branch
+      - name: "Apply IaC changes"
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: terraform apply -auto-approve tfplan
+        working-directory: ./deployments/terraform
+
+  gitops-deployment:
+    name: "ArgoCD Manifest Synchronizer"
+    needs: [containerization, infrastructure-iac]
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Checkout repository"
+        uses: actions/checkout@v4
+
+      # Update the image tag directly in the Helm values repo to trigger GitOps reconciliation
+      - name: "Update Helm Chart Image Version"
+        run: |
+          git config --global user.email "gitops-bot@nexuscore.enterprise.com"
+          git config --global user.name "NexusCore GitOps Bot"
+          sed -i 's/tag: .*/tag: "${{ github.sha }}"/g' ./deployments/helm/nexus-core-chart/values.yaml
+          git add ./deployments/helm/nexus-core-chart/values.yaml
+          git commit -m "gitops: bump api-gateway image tag to ${{ github.sha }} [skip ci]"
+          git push origin main

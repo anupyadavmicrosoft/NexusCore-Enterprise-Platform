@@ -1,0 +1,67 @@
+# ==============================================================================
+# Argo Rollouts Custom Resource - Canary Deployment Strategy
+# Orchestrates weighted traffic splits and real-time telemetry analysis
+# ==============================================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: api-gateway-rollout-canary
+  namespace: nexus-core
+spec:
+  replicas: 4
+  strategy:
+    canary:
+      # Target routing reference (integrates with Nginx ingress router)
+      ingressRef:
+        name: nexuscore-ingress
+        apiVersion: networking.k8s.io/v1
+      service:
+        stableService: api-gateway-stable
+        canaryService: api-gateway-canary
+      
+      # Step-by-step rollout promotion steps
+      steps:
+        # Step 1: Divert 5% of incoming user traffic to the canary pod
+        - setWeight: 5
+        # Step 2: Pause the deployment for 10 minutes to gather initial logging metrics
+        - pause: { duration: 10m }
+        
+        # Step 3: Divert 20% of traffic to canary
+        - setWeight: 20
+        # Step 4: Run real-time automated Prometheus metrics analyses checks
+        - analysis:
+            templates:
+              - templateName: transaction-error-rate-check
+            args:
+              - name: service-name
+                value: api-gateway-canary
+
+        # Step 5: Divert 50% of traffic to canary
+        - setWeight: 50
+        - pause: { duration: 5m }
+        
+        # Step 6: Divert 80% of traffic
+        - setWeight: 80
+        - pause: { duration: 2m }
+
+---
+# Analysis Template utilized to automatically trigger rollbacks on error-rate anomalies
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: transaction-error-rate-check
+  namespace: nexus-core
+spec:
+  metrics:
+    - name: success-rate
+      interval: 1m
+      successCondition: result[0] >= 0.95 # Require at least 95% client request success rates
+      failureLimit: 2                    # Automatically roll back if error limits fail twice
+      provider:
+        prometheus:
+          address: http://prometheus-k8s.monitoring.svc.cluster.local:9090
+          query: |
+            sum(rate(http_requests_total{status=~"2..|3..", service="api-gateway-canary"}[2m])) 
+            / 
+            sum(rate(http_requests_total{service="api-gateway-canary"}[2m]))
