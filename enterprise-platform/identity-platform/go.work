@@ -1,0 +1,15 @@
+go 1.22
+
+use (
+	./identity-service
+	./auth-service
+	./authorization-service
+	./user-service
+	./tenant-service
+	./organization-service
+	./shared-auth-library
+	./shared-security-library
+	./shared-jwt-library
+	./shared-oauth-library
+	./shared-event-library
+)
